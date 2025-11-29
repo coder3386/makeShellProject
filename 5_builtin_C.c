@@ -108,3 +108,104 @@ void builtin_cat(char **argv)
         i++;
     }
 }
+
+
+// [추가] ln 명령어 (하드 링크 및 심볼릭 링크 -s 지원)
+void builtin_ln(char **argv)
+{
+    if (argv[1] == NULL || argv[2] == NULL) {
+        fprintf(stderr, "usage: ln [-s] <target> <link_name>\n");
+        return;
+    }
+
+    // 심볼릭 링크 처리 (ln -s target linkname)
+    if (strcmp(argv[1], "-s") == 0) {
+        if (argv[3] == NULL) {
+            fprintf(stderr, "usage: ln -s <target> <link_name>\n");
+            return;
+        }
+        if (symlink(argv[2], argv[3]) != 0) {
+            perror("ln -s");
+        }
+    }
+    // 하드 링크 처리 (ln target linkname)
+    else {
+        if (link(argv[1], argv[2]) != 0) {
+            perror("ln");
+        }
+    }
+}
+
+// [추가] cp 명령어 (파일 복사)
+void builtin_cp(char **argv)
+{
+    if (argv[1] == NULL || argv[2] == NULL) {
+        fprintf(stderr, "usage: cp <source> <dest>\n");
+        return;
+    }
+
+    int src_fd = open(argv[1], O_RDONLY);
+    if (src_fd < 0) {
+        perror("cp: source open error");
+        return;
+    }
+
+    // 대상 파일 열기 (쓰기전용 | 없으면생성 | 있으면내용삭제, 권한 0644)
+    int dst_fd = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (dst_fd < 0) {
+        perror("cp: dest open error");
+        close(src_fd);
+        return;
+    }
+
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(src_fd, buf, sizeof(buf))) > 0) {
+        if (write(dst_fd, buf, n) != n) {
+            perror("cp: write error");
+            break;
+        }
+    }
+
+    close(src_fd);
+    close(dst_fd);
+}
+
+// [추가] grep 명령어 (단순 문자열 매칭)
+void builtin_grep(char **argv)
+{
+    if (argv[1] == NULL) {
+        fprintf(stderr, "usage: grep <pattern> [file]\n");
+        return;
+    }
+
+    char *pattern = argv[1];
+    FILE *fp;
+    char buffer[4096];
+
+    // 인자가 2개뿐이면(grep pattern) -> 표준 입력(파이프)에서 읽음
+    if (argv[2] == NULL) {
+        fp = stdin;
+    }
+    // 인자가 3개면(grep pattern filename) -> 파일에서 읽음
+    else {
+        fp = fopen(argv[2], "r");
+        if (fp == NULL) {
+            perror("grep");
+            return;
+        }
+    }
+
+    // 한 줄씩 읽어서 패턴 검색
+    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+        // strstr: 문자열 안에 문자열이 있는지 찾음 (NULL이 아니면 찾은 것)
+        if (strstr(buffer, pattern) != NULL) {
+            printf("%s", buffer);
+        }
+    }
+
+    if (fp != stdin) {
+        fclose(fp);
+    }
+}
+

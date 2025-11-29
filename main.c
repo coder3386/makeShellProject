@@ -7,11 +7,22 @@ int main()
     int narg;
     pid_t pid;
 
+    setup_signals();
+
     while (1) {
         printf("shell> ");
         fflush(stdout);
         
-        if(fgets(buf, sizeof(buf), stdin) == NULL) continue;
+        if(fgets(buf, sizeof(buf), stdin) == NULL) {
+            // 진짜 파일의 끝(Ctrl-D)이면 종료
+            if (feof(stdin)) {
+                printf("\n");
+                exit(0);
+            }
+            // 시그널(Ctrl-C) 때문에 끊긴 거면 버퍼 비우고 다시 입력 대기
+            clearerr(stdin);
+            continue;
+        }
         
         buf[strcspn(buf, "\n")] = 0;
         
@@ -113,7 +124,9 @@ int main()
             
             pid = fork();
             if (pid == 0) {
-                handle_redirection(argv, &narg); // 4번 재지향 처리
+                reset_signals();
+
+		handle_redirection(argv, &narg); // 4번 재지향 처리
                 execute_builtin(argv);
                 exit(0);
             } else if (pid > 0) {
@@ -130,8 +143,10 @@ int main()
         pid = fork();
 
         if (pid == 0) {
-            handle_redirection(argv, &narg); // 4번 재지향 처리
-            
+            reset_signals();
+	    
+	    handle_redirection(argv, &narg); // 4번 재지향 처리
+    
             execvp(argv[0], argv);
             perror("execvp failed");
             exit(1);
@@ -165,10 +180,15 @@ int getargs(char *cmd, char **argv)
 // 내장 명령어 확인 
 int is_builtin(char **argv)
 {
+if (argv[0] == NULL) return 0;
+
     if (strcmp(argv[0], "cd") == 0 ||
         strcmp(argv[0], "pwd") == 0 ||
         strcmp(argv[0], "ls") == 0 ||
-        strcmp(argv[0], "cat") == 0) {
+        strcmp(argv[0], "cat") == 0 ||
+	strcmp(argv[0], "ln") == 0 ||
+        strcmp(argv[0], "cp") == 0 ||
+        strcmp(argv[0], "grep") == 0) {
         return 1;
     }
     return 0;
@@ -181,4 +201,7 @@ void execute_builtin(char **argv)
     else if (strcmp(argv[0], "pwd") == 0) builtin_pwd(argv);
     else if (strcmp(argv[0], "ls") == 0) builtin_ls(argv);
     else if (strcmp(argv[0], "cat") == 0) builtin_cat(argv);
+    else if (strcmp(argv[0], "ln") == 0) builtin_ln(argv);
+    else if (strcmp(argv[0], "cp") == 0) builtin_cp(argv);
+    else if (strcmp(argv[0], "grep") == 0) builtin_grep(argv);
 }

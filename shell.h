@@ -15,7 +15,11 @@
 // 함수 선언
 int getargs(char *cmd, char **argv);
 
-// redirection.c에서 구현
+// 3_6_signal.c에서 구현
+void setup_signals();
+void reset_signals();
+
+// 4_redirection.c에서 구현
 void handle_redirection(char **argv, int *narg);
 void handle_pipe(char **argv, int narg);
 
@@ -24,6 +28,9 @@ void builtin_cd(char **argv);
 void builtin_pwd(char **argv);
 void builtin_ls(char **argv);
 void builtin_cat(char **argv);
+void builtin_ln(char **argv);
+void builtin_cp(char **argv);
+void builtin_grep(char **argv);
 
 // 내장 명령어 확인 및 실행
 int is_builtin(char **argv);
