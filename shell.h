@@ -31,6 +31,15 @@ void builtin_cat(char **argv);
 void builtin_ln(char **argv);
 void builtin_cp(char **argv);
 void builtin_grep(char **argv);
+// 1_exit.c에서 구현
+void builtin_exit(char **argv);
+// 파일/디렉터리 작업
+void builtin_mkdir(char **argv);
+void builtin_rmdir(char **argv);
+void builtin_rm(char **argv);
+void builtin_mv(char **argv);
+// 2_background.c에서 구현
+int check_and_strip_background(char **argv, int *narg);
 
 // 내장 명령어 확인 및 실행
 int is_builtin(char **argv);

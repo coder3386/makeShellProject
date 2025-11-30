@@ -209,3 +209,139 @@ void builtin_grep(char **argv)
     }
 }
 
+// mkdir 명령어
+void builtin_mkdir(char **argv)
+{
+    if (argv[1] == NULL) {
+        fprintf(stderr, "usage: mkdir <dir>\n");
+        return;
+    }
+    int i = 1;
+    while (argv[i] != NULL) {
+        if (mkdir(argv[i], 0755) != 0) {
+            fprintf(stderr, "mkdir: cannot create directory '%s': %s\n", argv[i], strerror(errno));
+        }
+        i++;
+    }
+}
+
+// rmdir 명령어 (비어있는 디렉터리만 제거)
+void builtin_rmdir(char **argv)
+{
+    if (argv[1] == NULL) {
+        fprintf(stderr, "usage: rmdir <dir>\n");
+        return;
+    }
+    int i = 1;
+    while (argv[i] != NULL) {
+        if (rmdir(argv[i]) != 0) {
+            fprintf(stderr, "rmdir: failed to remove '%s': %s\n", argv[i], strerror(errno));
+        }
+        i++;
+    }
+}
+
+// 내부 헬퍼: 디렉터리/파일을 재귀적으로 삭제
+static int remove_recursive(const char *path)
+{
+    struct stat st;
+    if (lstat(path, &st) != 0) {
+        return -1;
+    }
+
+    if (S_ISDIR(st.st_mode)) {
+        DIR *d = opendir(path);
+        if (!d) return -1;
+        struct dirent *entry;
+        int ret = 0;
+        while ((entry = readdir(d)) != NULL) {
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+            char child[4096];
+            snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+            if (remove_recursive(child) != 0) ret = -1;
+        }
+        closedir(d);
+        if (rmdir(path) != 0) ret = -1;
+        return ret;
+    } else {
+        // 파일 또는 심볼릭 링크
+        if (unlink(path) != 0) return -1;
+        return 0;
+    }
+}
+
+// rm 명령어: -r 옵션 지원
+void builtin_rm(char **argv)
+{
+    if (argv[1] == NULL) {
+        fprintf(stderr, "usage: rm [-r] <path>...\n");
+        return;
+    }
+
+    int i = 1;
+    int recursive = 0;
+    if (strcmp(argv[1], "-r") == 0 || strcmp(argv[1], "-R") == 0) {
+        recursive = 1;
+        i = 2;
+    }
+    if (argv[i] == NULL) {
+        fprintf(stderr, "rm: missing operand\n");
+        return;
+    }
+
+    for (; argv[i] != NULL; i++) {
+        if (recursive) {
+            if (remove_recursive(argv[i]) != 0) {
+                fprintf(stderr, "rm: failed to remove '%s': %s\n", argv[i], strerror(errno));
+            }
+        } else {
+            if (unlink(argv[i]) != 0) {
+                // unlink fails for directories; give a helpful message
+                fprintf(stderr, "rm: cannot remove '%s': %s\n", argv[i], strerror(errno));
+            }
+        }
+    }
+}
+
+// mv 명령어: 기본적으로 rename 사용, 다른 파일시스템일 경우 복사 후 삭제
+void builtin_mv(char **argv)
+{
+    if (argv[1] == NULL || argv[2] == NULL) {
+        fprintf(stderr, "usage: mv <source> <dest>\n");
+        return;
+    }
+
+    // 단순 rename 시도
+    if (rename(argv[1], argv[2]) == 0) return;
+
+    // rename 실패하면(예: EXDEV) 파일 복사 후 삭제 (단순 파일만 처리)
+    int src_fd = open(argv[1], O_RDONLY);
+    if (src_fd < 0) {
+        fprintf(stderr, "mv: cannot open '%s': %s\n", argv[1], strerror(errno));
+        return;
+    }
+    int dst_fd = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (dst_fd < 0) {
+        fprintf(stderr, "mv: cannot create '%s': %s\n", argv[2], strerror(errno));
+        close(src_fd);
+        return;
+    }
+
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(src_fd, buf, sizeof(buf))) > 0) {
+        if (write(dst_fd, buf, n) != n) {
+            fprintf(stderr, "mv: write error: %s\n", strerror(errno));
+            break;
+        }
+    }
+
+    close(src_fd);
+    close(dst_fd);
+
+    // 원본 삭제
+    if (unlink(argv[1]) != 0) {
+        fprintf(stderr, "mv: cannot remove '%s' after copy: %s\n", argv[1], strerror(errno));
+    }
+}
+

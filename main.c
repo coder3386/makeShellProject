@@ -31,6 +31,15 @@ int main()
         narg = getargs(buf, argv);
         if (narg == 0) continue;
 
+        // 백그라운드 요청 확인: 마지막 토큰이 '&'이면 제거하고 bg=1
+        int bg = check_and_strip_background(argv, &narg);
+
+        // `exit` 명령어 처리: 부모(쉘) 프로세스를 종료
+        if (argv[0] != NULL && strcmp(argv[0], "exit") == 0) {
+            builtin_exit(argv);
+            continue;
+        }
+
         // --------------------[4번 파트] 파이프 처리
 
         int has_pipe = 0;
@@ -42,8 +51,25 @@ int main()
         }
 
         if (has_pipe) {
-            handle_pipe(argv, narg);
-            continue;
+            if (bg) {
+                pid = fork();
+                if (pid == 0) {
+                    // 자식에서 파이프 처리 실행(백그라운드 파이프)
+                    reset_signals();
+                    handle_pipe(argv, narg);
+                    exit(0);
+                } else if (pid > 0) {
+                    // 부모는 대기하지 않음
+                    printf("[background] pid %d\n", pid);
+                    continue;
+                } else {
+                    perror("fork failed");
+                    continue;
+                }
+            } else {
+                handle_pipe(argv, narg);
+                continue;
+            }
         }
 
         //--------- [5번 파트] 내장 명령어 및 재지향 처리
@@ -118,19 +144,36 @@ int main()
             }
             
             if (!has_redirection) {
-                execute_builtin(argv);
-                continue;
+                if (bg) {
+                    pid = fork();
+                    if (pid == 0) {
+                        reset_signals();
+                        execute_builtin(argv);
+                        exit(0);
+                    } else if (pid > 0) {
+                        // 부모는 백그라운드이므로 대기하지 않음
+                        printf("[background] pid %d\n", pid);
+                        continue;
+                    } else {
+                        perror("fork failed");
+                        continue;
+                    }
+                } else {
+                    execute_builtin(argv);
+                    continue;
+                }
             }
             
             pid = fork();
             if (pid == 0) {
                 reset_signals();
 
-		handle_redirection(argv, &narg); // 4번 재지향 처리
+                handle_redirection(argv, &narg); // 4번 재지향 처리
                 execute_builtin(argv);
                 exit(0);
             } else if (pid > 0) {
-                wait(NULL);
+                if (!bg) wait(NULL);
+                else printf("[background] pid %d\n", pid);
             } else {
                 perror("fork failed");
             }
@@ -144,15 +187,15 @@ int main()
 
         if (pid == 0) {
             reset_signals();
-	    
-	    handle_redirection(argv, &narg); // 4번 재지향 처리
-    
+
+            handle_redirection(argv, &narg); // 4번 재지향 처리
+
             execvp(argv[0], argv);
             perror("execvp failed");
             exit(1);
         } else if (pid > 0) {
-            
-            wait(NULL);
+            if (!bg) wait(NULL);
+            else printf("[background] pid %d\n", pid);
         } else {
             perror("fork failed");
         }
@@ -186,9 +229,13 @@ if (argv[0] == NULL) return 0;
         strcmp(argv[0], "pwd") == 0 ||
         strcmp(argv[0], "ls") == 0 ||
         strcmp(argv[0], "cat") == 0 ||
-	strcmp(argv[0], "ln") == 0 ||
+    strcmp(argv[0], "ln") == 0 ||
         strcmp(argv[0], "cp") == 0 ||
-        strcmp(argv[0], "grep") == 0) {
+        strcmp(argv[0], "grep") == 0 ||
+        strcmp(argv[0], "mkdir") == 0 ||
+        strcmp(argv[0], "rmdir") == 0 ||
+        strcmp(argv[0], "rm") == 0 ||
+        strcmp(argv[0], "mv") == 0) {
         return 1;
     }
     return 0;
@@ -204,4 +251,8 @@ void execute_builtin(char **argv)
     else if (strcmp(argv[0], "ln") == 0) builtin_ln(argv);
     else if (strcmp(argv[0], "cp") == 0) builtin_cp(argv);
     else if (strcmp(argv[0], "grep") == 0) builtin_grep(argv);
+    else if (strcmp(argv[0], "mkdir") == 0) builtin_mkdir(argv);
+    else if (strcmp(argv[0], "rmdir") == 0) builtin_rmdir(argv);
+    else if (strcmp(argv[0], "rm") == 0) builtin_rm(argv);
+    else if (strcmp(argv[0], "mv") == 0) builtin_mv(argv);
 }
